@@ -114,9 +114,10 @@ export async function miniql<T = any>(rootQuery: IQuery, rootResolver: IQueryRes
 // Gets an operation resolver from a query with error checkign.
 //
 function getOperationResolver(rootResolver: IQueryResolver, opName: string) {
-    const operationResolver = rootResolver[opName];
+    const realOpName = opName;
+    const operationResolver = rootResolver[opName] || rootResolver[opName = 'default'];
     if (!operationResolver) {
-        throw new Error(createErrorForMissingQueryOperation(opName));
+        throw new Error(createErrorForMissingQueryOperation(realOpName));
     }
 
     if (!t(operationResolver).isObject) {
@@ -161,7 +162,7 @@ async function resolveRootEntity(queryOperation: IQueryOperation, output: any, e
     //
     // Resolve this entity.
     //
-    const resolvedEntity = await entityResolver.invoke(entityQuery.args || {}, queryGlobals.context); //TODO: Do these in parallel.
+    const resolvedEntity = await entityResolver.invoke(entityQuery.args || {}, {...queryGlobals.context, entityName: entityResolverName, operation: queryGlobals.opName}); //TODO: Do these in parallel.
     const entityWasResolved = !(resolvedEntity === null || resolvedEntity === undefined);
 
     if (entityWasResolved) {
@@ -203,7 +204,7 @@ function getGlobalEntityResolver(queryGlobals: IQueryGlobals, entityResolverName
 
     verbose(queryGlobals.context.verbose, nestingLevel, `Getting global entity resolver "${entityResolverName}" to resolve entity type "${entityTypeName}".`);
 
-    const entityResolver = queryGlobals.operationResolver[entityResolverName];
+    const entityResolver = queryGlobals.operationResolver[entityResolverName] || queryGlobals.operationResolver['default'];
     if (!entityResolver) {
         throw new Error(createErrorForMissingGlobalResolver(queryGlobals.opName, entityResolverName, entityTypeName, outputLocation));
     }
@@ -314,10 +315,18 @@ async function resolveNestedEntity(nestedEntityQuery: IEntityQuery, parentEntity
 //
 function createErrorForMissingQueryOperation(opName: string): string {
     return `
-Query operation "${opName}" is not supported by the resolver.
+// Query operation "${opName}" is not supported by the resolver.
 You must define a query resolver that looks like this:
     const root = {
         ${opName}: {
+            // ... Entity query resolvers go here.
+        },
+
+        // ... Other query operations go here.
+    };
+Or, provide a global default operation to handle it:
+    const root = {
+        default: {
             // ... Entity query resolvers go here.
         },
 
@@ -333,7 +342,9 @@ function createErrorForMissingGlobalResolver(opName: string, entityResolverName:
     return `
 Failed to find global resolver for entity "${entityResolverName}" of operation "${opName}", outputting to "${entityTypeName}" in ${outputLocation}.\n
 You must define a query resolver that looks like this:\n` +
-    createResolverExample(opName, entityResolverName);
+    createResolverExample(opName, entityResolverName) + `
+Or, provide a global default operation to handle it:\n` +
+    createResolverExample(opName, 'default');
 }
 
 //
@@ -343,7 +354,9 @@ function createErrorForMissingInvoke(opName: string, entityResolverName: string,
     return `
 Failed to find invoke function for entity "${entityResolverName}" of operation "${opName}", outputting to "${entityTypeName}" in ${outputLocation}.\n
 You must define a query resolver that looks like this:\n` + 
-    createResolverExample(opName, entityResolverName);
+    createResolverExample(opName, entityResolverName) + `
+Or, provide a global default operation to handle it:\n` +
+    createResolverExample(opName, 'default');
 }
 
 //
@@ -353,7 +366,9 @@ function createErrorForInvokeNotAFn(opName: string, entityResolverName: string, 
     return `
 Expected "invoke" function for entity resolver "${entityTypeName}" is to be a function.
 You must define a query resolver that looks like this:\n` + 
-    createResolverExample(opName, entityResolverName);
+    createResolverExample(opName, entityResolverName) + `
+Or, provide a global default operation to handle it:\n` +
+    createResolverExample(opName, 'default');
 }
 
 
